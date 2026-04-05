@@ -1,5 +1,18 @@
 (function () {
 
+  /* catch any uncaught errors and show them on screen */
+  window.onerror = function(msg, src, line) {
+    var b = document.getElementById('_errBanner');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = '_errBanner';
+      b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7f1d1d;color:#fecaca;font-size:12px;padding:8px 14px;z-index:9999;white-space:pre-wrap;max-height:160px;overflow:auto;';
+      document.body.appendChild(b);
+    }
+    b.textContent += 'JS ERROR: ' + msg + ' (line ' + line + ')\n';
+    return false;
+  };
+
   var BLU='#4f8ef7', GRN='#34d399', AMB='#f59e0b', RED='#f87171',
       PUR='#a78bfa', ORG='#fb923c', TEA='#2dd4bf';
 
@@ -45,16 +58,28 @@
   Chart.defaults.font.family="'Segoe UI',system-ui,sans-serif";
   Chart.defaults.font.size=11;
 
+  /* visible error banner */
+  function showErr(msg) {
+    var b = document.getElementById('_errBanner');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = '_errBanner';
+      b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7f1d1d;color:#fecaca;font-size:12px;padding:8px 14px;z-index:9999;white-space:pre-wrap;max-height:160px;overflow:auto;';
+      document.body.appendChild(b);
+    }
+    b.textContent += msg + '\n';
+  }
+
   /* safe chart maker */
   function mk(id, type, data, options, plugins) {
     var el = document.getElementById(id);
-    if (!el) { console.warn('canvas not found:', id); return null; }
+    if (!el) { showErr('MISSING canvas: ' + id); return null; }
     try {
       var cfg = {type:type, data:data, options:options};
       if (plugins) cfg.plugins = plugins;
       return new Chart(el, cfg);
     } catch(e) {
-      console.error('Chart failed ['+id+']:', e);
+      showErr('CHART ERROR [' + id + ']: ' + e.message);
       return null;
     }
   }
@@ -108,7 +133,7 @@
         [[lprMxI,lprV[lprMxI],'High'],[lprMnI,lprV[lprMnI],'Low']].forEach(function(it){
           ctx.save();ctx.fillStyle=BLU;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
           ctx.fillText((it[2]==='High'?'High: ':'Low: ')+fmt(it[1]),
-            x.getPixelForIndex(it[0]),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
+            x.getPixelForValue(lprD[it[0]].year),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
           ctx.restore();
         });
       }}]
@@ -127,7 +152,7 @@
         [[natMxI,natV[natMxI],'High'],[natMnI,natV[natMnI],'Low']].forEach(function(it){
           ctx.save();ctx.fillStyle=GRN;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
           ctx.fillText((it[2]==='High'?'High: ':'Low: ')+fmt(it[1]),
-            x.getPixelForIndex(it[0]),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
+            x.getPixelForValue(natAll[it[0]].year),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
           ctx.restore();
         });
       }}]
