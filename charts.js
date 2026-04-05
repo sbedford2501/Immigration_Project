@@ -200,7 +200,7 @@
           if(adm.party==='R'&&!showRep) return;
           var si=refYrs.indexOf(adm.start); if(si<0) return;
           var ei=refYrs.indexOf(adm.end); if(ei<0) ei=refYrs.length-1;
-          var x1=x.getPixelForIndex(si), x2=x.getPixelForIndex(Math.min(ei,refYrs.length-1));
+          var x1=x.getPixelForValue(refYrs[si]), x2=x.getPixelForValue(refYrs[Math.min(ei,refYrs.length-1)]);
           ctx.save();
           ctx.fillStyle=adm.party==='D'?'rgba(79,142,247,0.13)':'rgba(248,113,113,0.13)';
           ctx.fillRect(x1,y.top,x2-x1,y.bottom-y.top);
