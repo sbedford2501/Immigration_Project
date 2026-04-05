@@ -1,10 +1,8 @@
 (function () {
 
-  /* ── palette ── */
   var BLU='#4f8ef7', GRN='#34d399', AMB='#f59e0b', RED='#f87171',
       PUR='#a78bfa', ORG='#fb923c', TEA='#2dd4bf';
 
-  /* ── helpers ── */
   function fmt(n){
     if(n>=1e6) return (n/1e6).toFixed(1)+'M';
     if(n>=1e3) return Math.round(n/1e3)+'K';
@@ -15,227 +13,209 @@
     var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
     return 'rgba('+r+','+g+','+b+','+a+')';
   }
-  function line(lbl,data,col,fill){
+  function lineDS(lbl,data,col,fill){
     return {label:lbl,data:data,borderColor:col,
       backgroundColor:fill?alpha(col,0.15):'transparent',
       borderWidth:2,pointRadius:3,pointHoverRadius:5,tension:0.3,fill:!!fill};
   }
-  function bar(lbl,data,col){
+  function barDS(lbl,data,col){
     return {label:lbl,data:data,backgroundColor:alpha(col,0.8),
       borderColor:col,borderWidth:1,borderRadius:3};
   }
 
-  /* ── shared options ── */
-  var TIP={backgroundColor:'#1a1d27',borderColor:'#2e3350',borderWidth:1,
+  var TIP = {
+    backgroundColor:'#1a1d27',borderColor:'#2e3350',borderWidth:1,
     titleColor:'#e2e8f0',bodyColor:'#8892a4',padding:10,
-    callbacks:{label:function(c){return ' '+c.dataset.label+': '+(c.parsed.y!=null?c.parsed.y.toLocaleString():'N/A');}}};
-  var TIPd={backgroundColor:'#1a1d27',borderColor:'#2e3350',borderWidth:1,
-    titleColor:'#e2e8f0',bodyColor:'#8892a4',padding:10,
-    callbacks:{label:function(c){return ' '+c.label+': '+c.parsed.toLocaleString();}}};
-  var SC={x:{grid:{color:'#2e3350'},ticks:{maxRotation:45}},
-          y:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}}};
-  var SCst={x:{grid:{color:'#2e3350'},stacked:true},
-            y:{grid:{color:'#2e3350'},stacked:true,ticks:{callback:function(v){return fmt(v);}}}};
+    callbacks:{label:function(c){
+      return ' '+c.dataset.label+': '+(c.parsed.y!=null?c.parsed.y.toLocaleString():'N/A');
+    }}
+  };
+  var SC = {
+    x:{grid:{color:'#2e3350'},ticks:{maxRotation:45}},
+    y:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}}
+  };
+  var SCst = {
+    x:{grid:{color:'#2e3350'},stacked:true},
+    y:{grid:{color:'#2e3350'},stacked:true,ticks:{callback:function(v){return fmt(v);}}}
+  };
+  var BASE = {responsive:true,maintainAspectRatio:false};
 
-  function opts(extra){
-    return Object.assign({responsive:true,maintainAspectRatio:false},extra||{});
-  }
-
-  /* ── Chart.js defaults ── */
   Chart.defaults.color='#8892a4';
   Chart.defaults.borderColor='#2e3350';
   Chart.defaults.font.family="'Segoe UI',system-ui,sans-serif";
   Chart.defaults.font.size=11;
 
-  /* ── KPI tiles (always visible, safe to run immediately) ── */
-  var k=immigrationData.kpi2022;
-  document.getElementById('kpi-lpr').textContent=k.lpr.toLocaleString();
-  document.getElementById('kpi-nat').textContent=k.naturalizations.toLocaleString();
-  document.getElementById('kpi-ref').textContent=k.refugees.toLocaleString();
-  document.getElementById('kpi-asy').textContent=k.asylumGranted.toLocaleString();
+  /* safe chart maker */
+  function mk(id, type, data, options, plugins) {
+    var el = document.getElementById(id);
+    if (!el) { console.warn('canvas not found:', id); return null; }
+    try {
+      var cfg = {type:type, data:data, options:options};
+      if (plugins) cfg.plugins = plugins;
+      return new Chart(el, cfg);
+    } catch(e) {
+      console.error('Chart failed ['+id+']:', e);
+      return null;
+    }
+  }
 
-  /* ── track which tabs have been initialised ── */
-  var inited={};
+  /* KPI tiles */
+  var k = immigrationData.kpi2022;
+  document.getElementById('kpi-lpr').textContent = k.lpr.toLocaleString();
+  document.getElementById('kpi-nat').textContent = k.naturalizations.toLocaleString();
+  document.getElementById('kpi-ref').textContent = k.refugees.toLocaleString();
+  document.getElementById('kpi-asy').textContent = k.asylumGranted.toLocaleString();
 
-  /* ── tab navigation ── */
+  /* deferred init — only build charts when tab becomes visible */
+  var inited = {};
+
+  function buildTab(id) {
+    if (inited[id]) return;
+    inited[id] = true;
+    if (id==='overview')      buildOverview();
+    if (id==='refugees')      buildRefugees();
+    if (id==='asylum')        buildAsylum();
+    if (id==='lpr')           buildLPR();
+    if (id==='naturalization') buildNat();
+  }
+
   document.querySelectorAll('#nav button').forEach(function(btn){
-    btn.addEventListener('click',function(){
+    btn.addEventListener('click', function(){
       document.querySelectorAll('#nav button').forEach(function(b){b.classList.remove('active');});
       document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
       btn.classList.add('active');
-      var tabId=btn.dataset.tab;
+      var tabId = btn.dataset.tab;
       document.getElementById(tabId).classList.add('active');
-      if(!inited[tabId]){ inited[tabId]=true; buildTab(tabId); }
+      buildTab(tabId);
     });
   });
 
-  /* ── build the active (overview) tab on load ── */
-  inited['overview']=true;
+  /* build overview immediately — it is already visible */
   buildTab('overview');
 
-  /* ════════════════════════════════════════════════════════
-     TAB BUILDERS — called only when tab first becomes visible
-  ════════════════════════════════════════════════════════ */
-  function buildTab(id){
-    if(id==='overview')      buildOverview();
-    else if(id==='refugees') buildRefugees();
-    else if(id==='asylum')   buildAsylum();
-    else if(id==='lpr')      buildLPR();
-    else if(id==='naturalization') buildNat();
-  }
+  /* ── OVERVIEW ─────────────────────────────────────────── */
+  function buildOverview() {
+    var lprD = immigrationData.lprTotal;
+    var lprV = lprD.map(function(d){return d.total;});
+    var lprMxI = lprV.indexOf(Math.max.apply(null,lprV));
+    var lprMnI = lprV.indexOf(Math.min.apply(null,lprV));
 
-  /* ── safe chart factory ── */
-  function mk(id,cfg,plugins){
-    var el=document.getElementById(id);
-    if(!el){console.warn('missing canvas:',id);return null;}
-    try{
-      var c=new Chart(el,cfg);
-      if(plugins) plugins.forEach(function(p){c.config.plugins=c.config.plugins||[];});
-      return c;
-    }catch(e){console.error('chart failed ['+id+']:',e);return null;}
-  }
-
-  /* ── table builder ── */
-  function buildTable(id,head,rows){
-    var t=document.getElementById(id);
-    if(!t)return;
-    t.innerHTML=head+rows;
-  }
-
-  /* ════════════════════════════════════════════
-     OVERVIEW
-  ════════════════════════════════════════════ */
-  function buildOverview(){
-    var lprD=immigrationData.lprTotal;
-    var lprV=lprD.map(function(d){return d.total;});
-    var lprMxI=lprV.indexOf(Math.max.apply(null,lprV));
-    var lprMnI=lprV.indexOf(Math.min.apply(null,lprV));
-
-    mk('overviewLPR',opts({
-      type:'line',
-      data:{labels:lprD.map(function(d){return d.year;}),datasets:[line('Green Cards',lprV,BLU,true)]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
-      plugins:[{id:'lprHL',afterDatasetsDraw:function(ch){
+    mk('overviewLPR', 'line',
+      {labels:lprD.map(function(d){return d.year;}), datasets:[lineDS('Green Cards',lprV,BLU,true)]},
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
+      [{id:'lprHL',afterDatasetsDraw:function(ch){
         var ctx=ch.ctx,x=ch.scales.x,y=ch.scales.y;
         [[lprMxI,lprV[lprMxI],'High'],[lprMnI,lprV[lprMnI],'Low']].forEach(function(it){
           ctx.save();ctx.fillStyle=BLU;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-          ctx.fillText((it[2]==='High'?'High ':'Low ')+fmt(it[1]),
+          ctx.fillText((it[2]==='High'?'High: ':'Low: ')+fmt(it[1]),
             x.getPixelForIndex(it[0]),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
           ctx.restore();
         });
       }}]
-    }));
+    );
 
-    var natAll=immigrationData.naturalizations.filter(function(d){return d.year>=2000;});
-    var natV=natAll.map(function(d){return d.total;});
-    var natMxI=natV.indexOf(Math.max.apply(null,natV));
-    var natMnI=natV.indexOf(Math.min.apply(null,natV));
+    var natAll = immigrationData.naturalizations.filter(function(d){return d.year>=2000;});
+    var natV = natAll.map(function(d){return d.total;});
+    var natMxI = natV.indexOf(Math.max.apply(null,natV));
+    var natMnI = natV.indexOf(Math.min.apply(null,natV));
 
-    mk('overviewNat',{
-      type:'bar',
-      data:{labels:natAll.map(function(d){return d.year;}),datasets:[bar('Naturalizations',natV,GRN)]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
-      plugins:[{id:'natHL',afterDatasetsDraw:function(ch){
+    mk('overviewNat', 'bar',
+      {labels:natAll.map(function(d){return d.year;}), datasets:[barDS('Naturalizations',natV,GRN)]},
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
+      [{id:'natHL',afterDatasetsDraw:function(ch){
         var ctx=ch.ctx,x=ch.scales.x,y=ch.scales.y;
         [[natMxI,natV[natMxI],'High'],[natMnI,natV[natMnI],'Low']].forEach(function(it){
           ctx.save();ctx.fillStyle=GRN;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-          ctx.fillText((it[2]==='High'?'High ':'Low ')+fmt(it[1]),
+          ctx.fillText((it[2]==='High'?'High: ':'Low: ')+fmt(it[1]),
             x.getPixelForIndex(it[0]),y.getPixelForValue(it[1])+(it[2]==='High'?-8:14));
           ctx.restore();
         });
       }}]
-    });
+    );
 
-    mk('overviewRef',{
-      type:'line',
-      data:{labels:immigrationData.refugeeArrivals.map(function(d){return d.year;}),
-        datasets:[line('Refugee Arrivals',immigrationData.refugeeArrivals.map(function(d){return d.total;}),AMB,true)]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+    mk('overviewRef', 'line',
+      {labels:immigrationData.refugeeArrivals.map(function(d){return d.year;}),
+       datasets:[lineDS('Refugee Arrivals',immigrationData.refugeeArrivals.map(function(d){return d.total;}),AMB,true)]},
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
-    mk('overviewAsy',{
-      type:'line',
-      data:{labels:immigrationData.asylumGranted.map(function(d){return d.year;}),
-        datasets:[
-          line('Total',immigrationData.asylumGranted.map(function(d){return d.total;}),RED,true),
-          line('Affirmative',immigrationData.asylumGranted.map(function(d){return d.affirmative;}),PUR,false),
-          line('Defensive',immigrationData.asylumGranted.map(function(d){return d.defensive;}),ORG,false)
-        ]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+    mk('overviewAsy', 'line',
+      {labels:immigrationData.asylumGranted.map(function(d){return d.year;}),
+       datasets:[
+         lineDS('Total',immigrationData.asylumGranted.map(function(d){return d.total;}),RED,true),
+         lineDS('Affirmative',immigrationData.asylumGranted.map(function(d){return d.affirmative;}),PUR,false),
+         lineDS('Defensive',immigrationData.asylumGranted.map(function(d){return d.defensive;}),ORG,false)
+       ]},
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
   }
 
-  /* ════════════════════════════════════════════
-     REFUGEES
-  ════════════════════════════════════════════ */
+  /* ── REFUGEES ─────────────────────────────────────────── */
   var showDem=false, showRep=false, refChart=null;
 
-  function buildRefugees(){
-    var refYrs=immigrationData.refugeeArrivals.map(function(d){return d.year;});
-    var refV=immigrationData.refugeeArrivals.map(function(d){return d.total;});
-    var refAvg=Math.round(refV.reduce(function(a,b){return a+b;},0)/refV.length);
+  function buildRefugees() {
+    var refYrs = immigrationData.refugeeArrivals.map(function(d){return d.year;});
+    var refV   = immigrationData.refugeeArrivals.map(function(d){return d.total;});
+    var refAvg = Math.round(refV.reduce(function(a,b){return a+b;},0)/refV.length);
 
-    refChart=mk('refTimeline',{
-      type:'bar',
-      data:{labels:refYrs,datasets:[
-        bar('Refugee Arrivals',refV,AMB),
-        {label:'Average ('+fmt(refAvg)+')',data:refYrs.map(function(){return refAvg;}),
-          type:'line',borderColor:TEA,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0}
+    refChart = mk('refTimeline', 'bar',
+      {labels:refYrs, datasets:[
+        barDS('Refugee Arrivals',refV,AMB),
+        {label:'Average ('+fmt(refAvg)+')',
+         data:refYrs.map(function(){return refAvg;}),
+         type:'line',borderColor:TEA,borderWidth:2,borderDash:[6,4],
+         pointRadius:0,fill:false,tension:0}
       ]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
-      plugins:[{id:'adminShade',beforeDraw:function(ch){
-        if(!showDem&&!showRep)return;
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{display:false}}}),
+      [{id:'adminShade',beforeDraw:function(ch){
+        if(!showDem&&!showRep) return;
         var ctx=ch.ctx,x=ch.scales.x,y=ch.scales.y;
         immigrationData.administrations.forEach(function(adm){
-          if(adm.party==='D'&&!showDem)return;
-          if(adm.party==='R'&&!showRep)return;
-          var si=refYrs.indexOf(adm.start);
-          if(si<0)return;
-          var ei=refYrs.indexOf(adm.end);
-          if(ei<0)ei=refYrs.length-1;
-          var x1=x.getPixelForIndex(si),x2=x.getPixelForIndex(Math.min(ei,refYrs.length-1));
+          if(adm.party==='D'&&!showDem) return;
+          if(adm.party==='R'&&!showRep) return;
+          var si=refYrs.indexOf(adm.start); if(si<0) return;
+          var ei=refYrs.indexOf(adm.end); if(ei<0) ei=refYrs.length-1;
+          var x1=x.getPixelForIndex(si), x2=x.getPixelForIndex(Math.min(ei,refYrs.length-1));
           ctx.save();
           ctx.fillStyle=adm.party==='D'?'rgba(79,142,247,0.13)':'rgba(248,113,113,0.13)';
           ctx.fillRect(x1,y.top,x2-x1,y.bottom-y.top);
           ctx.fillStyle=adm.party==='D'?'rgba(79,142,247,0.8)':'rgba(248,113,113,0.8)';
-          ctx.font='9px sans-serif';ctx.textAlign='center';
+          ctx.font='9px sans-serif'; ctx.textAlign='center';
           ctx.fillText(adm.name,(x1+x2)/2,y.top+10);
           ctx.restore();
         });
       }}]
-    });
+    );
 
     var td=document.getElementById('toggleDem');
     var tr=document.getElementById('toggleRep');
     if(td) td.addEventListener('click',function(){
-      showDem=!showDem;this.classList.toggle('dem',showDem);
-      if(refChart)refChart.update();
+      showDem=!showDem; this.classList.toggle('dem',showDem);
+      if(refChart) refChart.update();
     });
     if(tr) tr.addEventListener('click',function(){
-      showRep=!showRep;this.classList.toggle('rep',showRep);
-      if(refChart)refChart.update();
+      showRep=!showRep; this.classList.toggle('rep',showRep);
+      if(refChart) refChart.update();
     });
 
-    var rr=immigrationData.refugeeByRegion;
-    mk('refRegion',{
-      type:'bar',
-      data:{labels:rr.years,datasets:[
-        bar('Africa',rr.Africa,AMB),bar('Asia',rr.Asia,BLU),
-        bar('Europe',rr.Europe,PUR),bar('North America',rr.NorthAmerica,GRN),
-        bar('South America',rr.SouthAmerica,ORG)
+    var rr = immigrationData.refugeeByRegion;
+    mk('refRegion', 'bar',
+      {labels:rr.years, datasets:[
+        barDS('Africa',rr.Africa,AMB), barDS('Asia',rr.Asia,BLU),
+        barDS('Europe',rr.Europe,PUR), barDS('North America',rr.NorthAmerica,GRN),
+        barDS('South America',rr.SouthAmerica,ORG)
       ]},
-      options:opts({scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+      Object.assign({},BASE,{scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
-    var rn=immigrationData.refugeeTopNationalities2022;
-    mk('refNat',{
-      type:'bar',
-      data:{labels:rn.map(function(d){return d.country;}),
-        datasets:[bar('Arrivals',rn.map(function(d){return d.arrivals;}),AMB)]},
-      options:opts({indexAxis:'y',
+    var rn = immigrationData.refugeeTopNationalities2022;
+    mk('refNat', 'bar',
+      {labels:rn.map(function(d){return d.country;}),
+       datasets:[barDS('Arrivals',rn.map(function(d){return d.arrivals;}),AMB)]},
+      Object.assign({},BASE,{indexAxis:'y',
         scales:{x:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}},y:{grid:{color:'#2e3350'}}},
         plugins:{tooltip:TIP,legend:{display:false}}})
-    });
+    );
 
     var mx=Math.max.apply(null,rn.map(function(d){return d.arrivals;}));
     var h='<thead><tr><th>#</th><th>Country</th><th class="num">Arrivals</th><th>Share</th></tr></thead><tbody>';
@@ -245,59 +225,61 @@
       h+='<tr><td>'+(i+1)+'</td><td>'+d.country+'</td><td class="num">'+full(d.arrivals)+'</td>'
         +'<td><div class="bc"><div class="mb" style="width:'+w+'px;background:'+AMB+'"></div><span>'+pct+'%</span></div></td></tr>';
     });
-    buildTable('refTable','',h+'</tbody>');
+    var t=document.getElementById('refTable'); if(t) t.innerHTML=h+'</tbody>';
   }
 
-  /* ════════════════════════════════════════════
-     ASYLUM
-  ════════════════════════════════════════════ */
-  function buildAsylum(){
-    var asyD=immigrationData.asylumGranted;
-    var asyN=immigrationData.asylumTopNationalities2022;
+  /* ── ASYLUM ───────────────────────────────────────────── */
+  function buildAsylum() {
+    var asyD = immigrationData.asylumGranted;
+    var asyN = immigrationData.asylumTopNationalities2022;
 
-    var af=document.getElementById('asyCountryFilter');
+    var af = document.getElementById('asyCountryFilter');
     if(af){
       asyN.slice().sort(function(a,b){return a.country.localeCompare(b.country);}).forEach(function(d){
-        var o=document.createElement('option');o.value=d.country;o.textContent=d.country;af.appendChild(o);
+        var o=document.createElement('option'); o.value=d.country; o.textContent=d.country;
+        af.appendChild(o);
       });
     }
 
-    mk('asyTimeline',{
-      type:'line',
-      data:{labels:asyD.map(function(d){return d.year;}),datasets:[
+    mk('asyTimeline', 'line',
+      {labels:asyD.map(function(d){return d.year;}), datasets:[
         {label:'Affirmative',data:asyD.map(function(d){return d.affirmative;}),
-          borderColor:PUR,backgroundColor:alpha(PUR,0.3),borderWidth:2,pointRadius:3,tension:0.3,fill:true},
+         borderColor:PUR,backgroundColor:alpha(PUR,0.3),borderWidth:2,pointRadius:3,tension:0.3,fill:true},
         {label:'Defensive',data:asyD.map(function(d){return d.defensive;}),
-          borderColor:ORG,backgroundColor:alpha(ORG,0.3),borderWidth:2,pointRadius:3,tension:0.3,fill:true}
+         borderColor:ORG,backgroundColor:alpha(ORG,0.3),borderWidth:2,pointRadius:3,tension:0.3,fill:true}
       ]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
-    var asyNatChart=mk('asyNat',{
-      type:'bar',
-      data:{labels:asyN.map(function(d){return d.country;}),
-        datasets:[bar('Affirmative Grants',asyN.map(function(d){return d.granted;}),PUR)]},
-      options:opts({indexAxis:'y',
+    var asyNatChart = mk('asyNat', 'bar',
+      {labels:asyN.map(function(d){return d.country;}),
+       datasets:[barDS('Affirmative Grants',asyN.map(function(d){return d.granted;}),PUR)]},
+      Object.assign({},BASE,{indexAxis:'y',
         scales:{x:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}},y:{grid:{color:'#2e3350'}}},
         plugins:{tooltip:TIP,legend:{display:false}}})
-    });
+    );
 
-    mk('asyPie',{
-      type:'doughnut',
-      data:{labels:['Affirmative (USCIS)','Defensive (Courts)'],
-        datasets:[{data:[14134,22481],backgroundColor:[alpha(PUR,0.8),alpha(ORG,0.8)],
-          borderColor:[PUR,ORG],borderWidth:2}]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{tooltip:TIPd,legend:{position:'bottom',labels:{boxWidth:12,padding:16}}}}
-    });
+    mk('asyPie', 'doughnut',
+      {labels:['Affirmative (USCIS)','Defensive (Courts)'],
+       datasets:[{data:[14134,22481],
+         backgroundColor:[alpha(PUR,0.8),alpha(ORG,0.8)],
+         borderColor:[PUR,ORG],borderWidth:2}]},
+      {responsive:true,maintainAspectRatio:false,
+       plugins:{
+         tooltip:{backgroundColor:'#1a1d27',borderColor:'#2e3350',borderWidth:1,
+           titleColor:'#e2e8f0',bodyColor:'#8892a4',padding:10,
+           callbacks:{label:function(c){return ' '+c.label+': '+c.parsed.toLocaleString();}}},
+         legend:{position:'bottom',labels:{boxWidth:12,padding:16}}
+       }}
+    );
 
     if(af) af.addEventListener('change',function(){
-      var val=this.value,note=document.getElementById('asyFilterNote');
-      var filtered=val==='all'?asyN:asyN.filter(function(d){return d.country===val;});
-      if(note)note.textContent=val==='all'?'':(filtered.length?val+' — '+filtered[0].granted.toLocaleString()+' grants FY2022':'Not in top 10');
+      var val=this.value, note=document.getElementById('asyFilterNote');
+      var filtered = val==='all' ? asyN : asyN.filter(function(d){return d.country===val;});
+      if(note) note.textContent = val==='all' ? '' : (filtered.length ? val+' — '+filtered[0].granted.toLocaleString()+' grants FY2022' : 'Not in top 10');
       if(asyNatChart){
-        asyNatChart.data.labels=filtered.map(function(d){return d.country;});
-        asyNatChart.data.datasets[0].data=filtered.map(function(d){return d.granted;});
+        asyNatChart.data.labels = filtered.map(function(d){return d.country;});
+        asyNatChart.data.datasets[0].data = filtered.map(function(d){return d.granted;});
         asyNatChart.update();
       }
     });
@@ -310,53 +292,47 @@
       h+='<tr><td>'+d.year+'</td><td class="num">'+full(d.total)+'</td><td class="num">'+full(d.affirmative)+'</td><td class="num">'+full(d.defensive)+'</td>'
         +'<td><div class="bc"><div class="mb" style="width:'+w+'px;background:'+PUR+'"></div><span>'+pct+'%</span></div></td></tr>';
     });
-    buildTable('asyTable','',h+'</tbody>');
+    var t=document.getElementById('asyTable'); if(t) t.innerHTML=h+'</tbody>';
   }
 
-  /* ════════════════════════════════════════════
-     LPR
-  ════════════════════════════════════════════ */
-  function buildLPR(){
-    mk('lprTimeline',{
-      type:'line',
-      data:{labels:immigrationData.lprTotal.map(function(d){return d.year;}),
-        datasets:[line('Green Cards',immigrationData.lprTotal.map(function(d){return d.total;}),BLU,true)]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{display:false}}})
-    });
+  /* ── LPR ──────────────────────────────────────────────── */
+  function buildLPR() {
+    mk('lprTimeline', 'line',
+      {labels:immigrationData.lprTotal.map(function(d){return d.year;}),
+       datasets:[lineDS('Green Cards',immigrationData.lprTotal.map(function(d){return d.total;}),BLU,true)]},
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{display:false}}})
+    );
 
     var lc=immigrationData.lprByClass;
-    mk('lprClass',{
-      type:'bar',
-      data:{labels:lc.years,datasets:[
-        bar('Immediate Relatives',lc.immediateRelatives,BLU),
-        bar('Family Sponsored',lc.familySponsored,GRN),
-        bar('Employment Based',lc.employmentBased,AMB),
-        bar('Diversity',lc.diversity,PUR),
-        bar('Refugees/Asylees',lc.refugeesAsylees,RED)
+    mk('lprClass', 'bar',
+      {labels:lc.years, datasets:[
+        barDS('Immediate Relatives',lc.immediateRelatives,BLU),
+        barDS('Family Sponsored',lc.familySponsored,GRN),
+        barDS('Employment Based',lc.employmentBased,AMB),
+        barDS('Diversity',lc.diversity,PUR),
+        barDS('Refugees/Asylees',lc.refugeesAsylees,RED)
       ]},
-      options:opts({scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+      Object.assign({},BASE,{scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
     var lr=immigrationData.lprByRegion;
-    mk('lprRegion',{
-      type:'line',
-      data:{labels:lr.years,datasets:[
-        line('Africa',lr.Africa,AMB,false),line('Asia',lr.Asia,BLU,false),
-        line('Europe',lr.Europe,PUR,false),line('North America',lr.NorthAmerica,GRN,false),
-        line('South America',lr.SouthAmerica,ORG,false)
+    mk('lprRegion', 'line',
+      {labels:lr.years, datasets:[
+        lineDS('Africa',lr.Africa,AMB,false), lineDS('Asia',lr.Asia,BLU,false),
+        lineDS('Europe',lr.Europe,PUR,false), lineDS('North America',lr.NorthAmerica,GRN,false),
+        lineDS('South America',lr.SouthAmerica,ORG,false)
       ]},
-      options:opts({scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+      Object.assign({},BASE,{scales:SC,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
     var lc2=immigrationData.lprTopCountries2022;
-    mk('lprCountry',{
-      type:'bar',
-      data:{labels:lc2.map(function(d){return d.country;}),
-        datasets:[bar('LPR Admissions',lc2.map(function(d){return d.total;}),BLU)]},
-      options:opts({indexAxis:'y',
+    mk('lprCountry', 'bar',
+      {labels:lc2.map(function(d){return d.country;}),
+       datasets:[barDS('LPR Admissions',lc2.map(function(d){return d.total;}),BLU)]},
+      Object.assign({},BASE,{indexAxis:'y',
         scales:{x:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}},y:{grid:{color:'#2e3350'}}},
         plugins:{tooltip:TIP,legend:{display:false}}})
-    });
+    );
 
     var data=immigrationData.lprByState2022.slice().sort(function(a,b){return b.total-a.total;});
     var mx=data[0].total;
@@ -367,29 +343,26 @@
       h+='<tr><td>'+(i+1)+'</td><td>'+d.state+'</td><td class="num">'+full(d.total)+'</td>'
         +'<td><div class="bc"><div class="mb" style="width:'+w+'px;background:'+BLU+'"></div><span>'+pct+'%</span></div></td></tr>';
     });
-    buildTable('lprStateTable','',h+'</tbody>');
+    var t=document.getElementById('lprStateTable'); if(t) t.innerHTML=h+'</tbody>';
   }
 
-  /* ════════════════════════════════════════════
-     NATURALIZATIONS
-  ════════════════════════════════════════════ */
-  function buildNat(){
+  /* ── NATURALIZATIONS ──────────────────────────────────── */
+  function buildNat() {
     var natYrs=immigrationData.naturalizations.map(function(d){return d.year;});
     var refByYr={};
     immigrationData.refugeeArrivals.forEach(function(d){refByYr[d.year]=d.total;});
     var refElig=natYrs.map(function(yr){return refByYr[yr-6]||null;});
 
-    mk('natTimeline',{
-      type:'line',
-      data:{labels:natYrs,datasets:[
+    mk('natTimeline', 'line',
+      {labels:natYrs, datasets:[
         {label:'Persons who Received Citizenship',
-          data:immigrationData.naturalizations.map(function(d){return d.total;}),
-          borderColor:GRN,backgroundColor:alpha(GRN,0.15),borderWidth:2,pointRadius:3,tension:0.3,fill:true},
+         data:immigrationData.naturalizations.map(function(d){return d.total;}),
+         borderColor:GRN,backgroundColor:alpha(GRN,0.15),borderWidth:2,pointRadius:3,tension:0.3,fill:true},
         {label:'Refugees eligible for citizenship (arrived ~6 yrs prior)',
-          data:refElig,borderColor:AMB,backgroundColor:'transparent',
-          borderWidth:2,borderDash:[6,4],pointRadius:4,pointBackgroundColor:AMB,tension:0.3,fill:false}
+         data:refElig,borderColor:AMB,backgroundColor:'transparent',
+         borderWidth:2,borderDash:[6,4],pointRadius:4,pointBackgroundColor:AMB,tension:0.3,fill:false}
       ]},
-      options:opts({scales:SC,plugins:{
+      Object.assign({},BASE,{scales:SC,plugins:{
         tooltip:{backgroundColor:'#1a1d27',borderColor:'#2e3350',borderWidth:1,
           titleColor:'#e2e8f0',bodyColor:'#8892a4',padding:10,
           callbacks:{label:function(c){return ' '+c.dataset.label+': '+(c.parsed.y!=null?c.parsed.y.toLocaleString():'N/A');}}},
@@ -402,28 +375,26 @@
           }
         }}
       }})
-    });
+    );
 
     var nr=immigrationData.naturalizationsByRegion;
-    mk('natRegion',{
-      type:'bar',
-      data:{labels:nr.years,datasets:[
-        bar('Africa',nr.Africa,AMB),bar('Asia',nr.Asia,BLU),
-        bar('Europe',nr.Europe,PUR),bar('North America',nr.NorthAmerica,GRN),
-        bar('South America',nr.SouthAmerica,ORG)
+    mk('natRegion', 'bar',
+      {labels:nr.years, datasets:[
+        barDS('Africa',nr.Africa,AMB), barDS('Asia',nr.Asia,BLU),
+        barDS('Europe',nr.Europe,PUR), barDS('North America',nr.NorthAmerica,GRN),
+        barDS('South America',nr.SouthAmerica,ORG)
       ]},
-      options:opts({scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
-    });
+      Object.assign({},BASE,{scales:SCst,plugins:{tooltip:TIP,legend:{labels:{boxWidth:12,padding:16}}}})
+    );
 
     var nc=immigrationData.naturalizationTopCountries2022;
-    mk('natCountry',{
-      type:'bar',
-      data:{labels:nc.map(function(d){return d.country;}),
-        datasets:[bar('Naturalizations',nc.map(function(d){return d.total;}),GRN)]},
-      options:opts({indexAxis:'y',
+    mk('natCountry', 'bar',
+      {labels:nc.map(function(d){return d.country;}),
+       datasets:[barDS('Naturalizations',nc.map(function(d){return d.total;}),GRN)]},
+      Object.assign({},BASE,{indexAxis:'y',
         scales:{x:{grid:{color:'#2e3350'},ticks:{callback:function(v){return fmt(v);}}},y:{grid:{color:'#2e3350'}}},
         plugins:{tooltip:TIP,legend:{display:false}}})
-    });
+    );
 
     var data=nc.slice().sort(function(a,b){return b.total-a.total;});
     var mx=data[0].total;
@@ -434,19 +405,17 @@
       h+='<tr><td>'+(i+1)+'</td><td>'+d.country+'</td><td class="num">'+full(d.total)+'</td>'
         +'<td><div class="bc"><div class="mb" style="width:'+w+'px;background:'+GRN+'"></div><span>'+pct+'%</span></div></td></tr>';
     });
-    buildTable('natTable','',h+'</tbody>');
+    var t=document.getElementById('natTable'); if(t) t.innerHTML=h+'</tbody>';
   }
 
-  /* ════════════════════════════════════════════
-     PDF EXPORT
-  ════════════════════════════════════════════ */
+  /* ── PDF EXPORT ───────────────────────────────────────── */
   var expBtn=document.getElementById('exportPDF');
   if(expBtn) expBtn.addEventListener('click',function(){
     var lbl=document.getElementById('exportLabel');
     var ico=document.getElementById('exportIcon');
     expBtn.classList.add('loading');
-    if(lbl)lbl.textContent='Building PDF...';
-    if(ico)ico.classList.add('spin');
+    if(lbl) lbl.textContent='Building PDF...';
+    if(ico) ico.classList.add('spin');
     try{
       var jsPDF=window.jspdf.jsPDF;
       var PW=297,PH=210,M=10,CW=PW-M*2;
@@ -463,14 +432,13 @@
         p.text('Page '+pg+' | DHS/OHS Statistics',PW-M,9,{align:'right'});
       }
       var blocks=Array.from(activeTab.querySelectorAll('.kgrid,.ins,.expgrid,.spot,.rfbar,.ccard,.frow'));
-      var pg=1,cy=16;
-      hdr(pdf,tabLabel,pg);
+      var pg=1,cy=16; hdr(pdf,tabLabel,pg);
       function next(i){
         if(i>=blocks.length){
           pdf.save('Dashboard_'+tabLabel.replace(/\s+/g,'_').slice(0,30)+'.pdf');
           expBtn.classList.remove('loading');
-          if(lbl)lbl.textContent='Export PDF';
-          if(ico)ico.classList.remove('spin');
+          if(lbl) lbl.textContent='Export PDF';
+          if(ico) ico.classList.remove('spin');
           return;
         }
         var bl=blocks[i];
@@ -480,15 +448,15 @@
             var ih=CW*(cv.height/cv.width);
             if(cy+ih>PH-M){pdf.addPage();pg++;cy=16;hdr(pdf,tabLabel,pg);}
             pdf.addImage(cv.toDataURL('image/png'),'PNG',M,cy,CW,ih);
-            cy+=ih+4;next(i+1);
+            cy+=ih+4; next(i+1);
           }).catch(function(){next(i+1);});
       }
       next(0);
     }catch(e){
       console.error('PDF error',e);
       expBtn.classList.remove('loading');
-      if(lbl)lbl.textContent='Export PDF';
-      if(ico)ico.classList.remove('spin');
+      if(lbl) lbl.textContent='Export PDF';
+      if(ico) ico.classList.remove('spin');
     }
   });
 
