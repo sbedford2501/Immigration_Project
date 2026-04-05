@@ -1,6 +1,4 @@
-// Immigration Dashboard Data — DHS Office of Homeland Security Statistics FY2022
-
-const immigrationData = {
+var immigrationData = {
 
   refugeeArrivals: [
     {year:1980,total:207116},{year:1981,total:159252},{year:1982,total:98096},
@@ -93,9 +91,9 @@ const immigrationData = {
     {country:"Venezuela",granted:2228},
     {country:"Afghanistan",granted:1438},
     {country:"China",granted:1538},
+    {country:"Turkey",granted:980},
     {country:"Egypt",granted:683},
     {country:"Ethiopia",granted:582},
-    {country:"Turkey",granted:980},
     {country:"Colombia",granted:464},
     {country:"Russia",granted:450},
     {country:"Guatemala",granted:328},
@@ -177,18 +175,12 @@ const immigrationData = {
   ],
 
   lprByState2022: [
-    {state:"California",total:182921},
-    {state:"Florida",total:113653},
-    {state:"New York",total:111309},
-    {state:"Texas",total:109720},
-    {state:"New Jersey",total:54958},
-    {state:"Massachusetts",total:32885},
-    {state:"Illinois",total:34551},
-    {state:"Washington",total:31835},
-    {state:"Pennsylvania",total:28381},
-    {state:"Virginia",total:28902},
-    {state:"Georgia",total:26312},
-    {state:"Maryland",total:24233}
+    {state:"California",total:182921},{state:"Florida",total:113653},
+    {state:"New York",total:111309},{state:"Texas",total:109720},
+    {state:"New Jersey",total:54958},{state:"Illinois",total:34551},
+    {state:"Massachusetts",total:32885},{state:"Washington",total:31835},
+    {state:"Pennsylvania",total:28381},{state:"Virginia",total:28902},
+    {state:"Georgia",total:26312},{state:"Maryland",total:24233}
   ],
 
   kpi2022: {
